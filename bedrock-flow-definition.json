@@ -1,0 +1,623 @@
+{
+  "nodes": [
+    {
+      "name": "FlowInputNode",
+      "type": "Input",
+      "configuration": {
+        "input": {}
+      },
+      "outputs": [
+        {
+          "name": "document",
+          "type": "String"
+        }
+      ]
+    },
+    {
+      "name": "ClassifierPrompt",
+      "type": "Prompt",
+      "configuration": {
+        "prompt": {
+          "sourceConfiguration": {
+            "inline": {
+              "templateType": "TEXT",
+              "templateConfiguration": {
+                "text": {
+                  "text": "Return exactly BUG_REPORT, PLATFORM_QUESTION, or OTHER. Do not explain.\nIf the message mentions a crash, freeze, bug, error, or broken app/site, return BUG_REPORT.\nIf it asks shop policy/status/how-to, return PLATFORM_QUESTION.\nOtherwise return OTHER.\nMessage: {{customerMessage}}\nLabel:",
+                  "inputVariables": [
+                    {
+                      "name": "customerMessage"
+                    }
+                  ]
+                }
+              },
+              "modelId": "amazon.nova-pro-v1:0",
+              "inferenceConfiguration": {
+                "text": {
+                  "temperature": 0.0,
+                  "topP": 0.8999999761581421,
+                  "maxTokens": 6
+                }
+              }
+            }
+          }
+        }
+      },
+      "inputs": [
+        {
+          "name": "customerMessage",
+          "type": "String",
+          "expression": "$.data"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "modelCompletion",
+          "type": "String"
+        }
+      ]
+    },
+    {
+      "name": "RouteCondition",
+      "type": "Condition",
+      "configuration": {
+        "condition": {
+          "conditions": [
+            {
+              "name": "BugReport",
+              "expression": "label == \"BUG_REPORT\""
+            },
+            {
+              "name": "PlatformQuestion",
+              "expression": "label == \"PLATFORM_QUESTION\""
+            },
+            {
+              "name": "Other",
+              "expression": "label == \"OTHER\""
+            },
+            {
+              "name": "default"
+            }
+          ]
+        }
+      },
+      "inputs": [
+        {
+          "name": "label",
+          "type": "String",
+          "expression": "$.data"
+        }
+      ]
+    },
+    {
+      "name": "BugDetailCheck",
+      "type": "InlineCode",
+      "configuration": {
+        "inlineCode": {
+          "code": "text = (customerMessage or '').lower()\nstep_markers = ['reproduce', 'steps', '1.', '2.', 'add ', 'click', 'go to checkout', 'entering my card', 'after i']\nenv_markers = ['chrome', 'firefox', 'safari', 'edge', 'windows', 'macos', 'sonoma', 'ios', 'android', 'iphone', 'device', 'browser', 'app version']\nhas_steps = any(marker in text for marker in step_markers)\nhas_env = any(marker in text for marker in env_markers)\n'READY' if has_steps and has_env else 'NEEDS_INFO'\n",
+          "language": "Python_3"
+        }
+      },
+      "inputs": [
+        {
+          "name": "customerMessage",
+          "type": "String",
+          "expression": "$.data"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "response",
+          "type": "String"
+        }
+      ]
+    },
+    {
+      "name": "BugDetailCondition",
+      "type": "Condition",
+      "configuration": {
+        "condition": {
+          "conditions": [
+            {
+              "name": "Ready",
+              "expression": "status == \"READY\""
+            },
+            {
+              "name": "default"
+            }
+          ]
+        }
+      },
+      "inputs": [
+        {
+          "name": "status",
+          "type": "String",
+          "expression": "$.data"
+        }
+      ]
+    },
+    {
+      "name": "BugReportAgent",
+      "type": "Agent",
+      "configuration": {
+        "agent": {
+          "agentAliasArn": "arn:aws:bedrock:us-east-1:502972339313:agent-alias/5PRIQLUST6/TYORSYKVDA"
+        }
+      },
+      "inputs": [
+        {
+          "name": "agentInputText",
+          "type": "String",
+          "expression": "$.data"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "agentResponse",
+          "type": "String"
+        }
+      ]
+    },
+    {
+      "name": "BugFollowUpMessage",
+      "type": "InlineCode",
+      "configuration": {
+        "inlineCode": {
+          "code": "'I can file this as a bug report. Please send the steps to reproduce and your environment, such as browser, operating system, device, or app version.'",
+          "language": "Python_3"
+        }
+      },
+      "inputs": [
+        {
+          "name": "customerMessage",
+          "type": "String",
+          "expression": "$.data"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "response",
+          "type": "String"
+        }
+      ]
+    },
+    {
+      "name": "FAQPrompt",
+      "type": "Prompt",
+      "configuration": {
+        "prompt": {
+          "sourceConfiguration": {
+            "inline": {
+              "templateType": "TEXT",
+              "templateConfiguration": {
+                "text": {
+                  "text": "Answer the customer using only the FAQ below. Keep the answer short and direct.\nUse plain ASCII punctuation.\nIf the FAQ does not contain the answer, write: \"The FAQ does not cover that. Please contact human support at 1-800-555-0199.\"\nDo not add greetings, sign-offs, names, or policies that are not in the FAQ.\n\nFAQ:\nOnline Shop FAQ (Demo)\n\nOrders\n\n1) Do I need an account to place an order?\nNo. You can check out as a guest. Creating an account lets you track orders, save addresses, and speed up future checkouts.\n\n2) How do I place an order?\nAdd items to your cart, proceed to checkout, enter shipping details, choose a payment method, and confirm your order. You'll receive an email confirmation once it's placed.\n\n3) Can I change or cancel my order after placing it?\nIf your order hasn't been packed yet, we may be able to change or cancel it. Contact support as soon as possible with your order number.\n\n4) I didn't receive an order confirmation email. What should I do?\nCheck your spam/junk folder and verify the email address used at checkout. If it's still missing after 30 minutes, contact support and we'll resend it.\n\n5) Why was my order canceled?\nOrders can be canceled due to payment authorization issues, stock availability, or automated fraud checks. If this happens, you won't be charged (or you'll be refunded automatically).\n\n---\n\nShipping & Delivery\n\n6) Where do you ship?\nWe ship to most countries/regions listed at checkout. If your address isn't available, it means we currently can't ship there.\n\n7) How much does shipping cost?\nShipping costs are calculated at checkout based on destination and delivery speed. Promotions like free shipping (if offered) will be shown automatically.\n\n8) How long does delivery take?\nEstimated delivery times are shown at checkout and in your shipping confirmation email. Processing typically takes 1-2 business days before dispatch.\n\n9) How do I track my order?\nOnce your order ships, we'll email a tracking link. If you have an account, you can also find tracking under My Orders.\n\n10) My package is late, missing, or marked delivered but I can't find it.\nFirst, check tracking updates, your mailbox/neighbor, and any safe-place notes from the carrier. If it still hasn't turned up after 24 hours (marked delivered) or is delayed beyond the last estimate, contact support and we'll investigate.\n\n---\n\nReturns & Refunds\n\n11) What is your return policy?\nYou can return most items within 30 days of delivery as long as they're unused and in original packaging (unless the item arrived defective).\n\n12) How do I start a return?\nContact support with your order number and the items you want to return. We'll send return instructions and, where applicable, a return label.\n\n13) Who pays for return shipping?\nIf the return is due to damage, defect, or our error, we cover return shipping. For \"changed my mind\" returns, return shipping may be deducted from your refund where allowed.\n\n14) When will I receive my refund?\nRefunds are issued to the original payment method after we receive and inspect the return. This typically takes 3-10 business days, depending on your bank/provider.\n\n15) Can I exchange an item?\nWe usually don't do direct exchanges. The fastest option is to return the original item (if eligible) and place a new order.\n\n16) What if my item arrived damaged or defective?\nContact us within 7 days of delivery with photos of the item, packaging, and shipping label. We'll arrange a replacement or refund.\n\n17) Are any items non-returnable?\nSome items may be non-returnable for hygiene, safety, customization, or regulatory reasons. If so, it will be clearly stated on the product page and/or at checkout.\n\n---\n\nPayments & Promotions\n\n18) What payment methods do you accept?\nWe accept major credit/debit cards and other local methods shown at checkout. Available options can vary by country.\n\n19) When will I be charged?\nYou're charged when your order is placed (or when payment is authorized, depending on the method). If an item ships separately, some providers may show multiple authorizations.\n\n20) Why was my payment declined?\nCommon reasons include incorrect billing details, insufficient funds, bank security checks, or limits on international/online purchases. Try again, use a different method, or contact your bank.\n\n21) How do I use a discount or promo code?\nEnter the code at checkout in the promo/discount field and apply it before paying. Only one code may be used unless stated otherwise.\n\n22) Can I get an invoice/receipt?\nA receipt is emailed after purchase. If you need an invoice with company details (e.g., VAT), contact support with your order number and billing information.\n\n---\n\nProducts & Stock\n\n23) Is the item I want in stock?\nIf you can add it to your cart, it's generally in stock. If it sells out, the product page will show \"Out of stock.\"\n\n24) Will you restock out-of-stock items?\nSome items are seasonal or limited. If restocking is planned, you may see a \"Notify me\" option on the product page.\n\n25) Do product photos match the real item?\nWe aim for accurate images and descriptions, but colors can vary by screen settings and lighting. Check the product details for material and sizing notes.\n\n---\n\nAccount & Support\n\n26) I forgot my password. How do I reset it?\nUse the \"Forgot password\" link on the sign-in page. You'll receive a reset email if the address matches an account.\n\n27) How do I update my address or email?\nSign in and go to Account Settings to update your details. If an order is already placed, contact support quickly to request changes.\n\n28) How do I delete my account?\nContact support from the email linked to your account. We'll verify your request and process deletion in line with legal/recordkeeping requirements.\n\n29) How can I contact customer support?\nUse the help/contact form on our site (recommended) or reply to any order email. Include your order number for faster help.\n\n30) What are your support hours and response times?\nSupport is available Monday-Friday (excluding holidays). We typically respond within 1-2 business days; urgent shipping/return issues are prioritized.\n\n---\n\nPrivacy\n\n31) How do you use my personal data?\nWe use your data to process orders, provide support, prevent fraud, and improve our services. We don't sell your personal information.\n\n32) Can I request access or deletion of my data?\nYes. Contact support with your request. We'll handle it according to applicable privacy laws and may need to verify your identity.\n\nCustomer question: {{customerMessage}}",
+                  "inputVariables": [
+                    {
+                      "name": "customerMessage"
+                    }
+                  ]
+                }
+              },
+              "modelId": "amazon.nova-pro-v1:0",
+              "inferenceConfiguration": {
+                "text": {
+                  "temperature": 0.0,
+                  "topP": 0.8999999761581421,
+                  "maxTokens": 450
+                }
+              }
+            }
+          }
+        }
+      },
+      "inputs": [
+        {
+          "name": "customerMessage",
+          "type": "String",
+          "expression": "$.data"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "modelCompletion",
+          "type": "String"
+        }
+      ]
+    },
+    {
+      "name": "OtherRedirectPrompt",
+      "type": "Prompt",
+      "configuration": {
+        "prompt": {
+          "sourceConfiguration": {
+            "inline": {
+              "templateType": "TEXT",
+              "templateConfiguration": {
+                "text": {
+                  "text": "This request is outside the bug report and online shop FAQ support paths.\nReply in one or two sentences. Do not include a greeting, sign-off, or placeholder name.\nTell the customer to contact human support at 1-800-555-0199.\n\nCustomer message: {{customerMessage}}",
+                  "inputVariables": [
+                    {
+                      "name": "customerMessage"
+                    }
+                  ]
+                }
+              },
+              "modelId": "amazon.nova-pro-v1:0",
+              "inferenceConfiguration": {
+                "text": {
+                  "temperature": 0.0,
+                  "topP": 0.8999999761581421,
+                  "maxTokens": 160
+                }
+              }
+            }
+          }
+        }
+      },
+      "inputs": [
+        {
+          "name": "customerMessage",
+          "type": "String",
+          "expression": "$.data"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "modelCompletion",
+          "type": "String"
+        }
+      ]
+    },
+    {
+      "name": "DefaultRedirectPrompt",
+      "type": "Prompt",
+      "configuration": {
+        "prompt": {
+          "sourceConfiguration": {
+            "inline": {
+              "templateType": "TEXT",
+              "templateConfiguration": {
+                "text": {
+                  "text": "This request is outside the bug report and online shop FAQ support paths.\nReply in one or two sentences. Do not include a greeting, sign-off, or placeholder name.\nTell the customer to contact human support at 1-800-555-0199.\n\nCustomer message: {{customerMessage}}",
+                  "inputVariables": [
+                    {
+                      "name": "customerMessage"
+                    }
+                  ]
+                }
+              },
+              "modelId": "amazon.nova-pro-v1:0",
+              "inferenceConfiguration": {
+                "text": {
+                  "temperature": 0.0,
+                  "topP": 0.8999999761581421,
+                  "maxTokens": 160
+                }
+              }
+            }
+          }
+        }
+      },
+      "inputs": [
+        {
+          "name": "customerMessage",
+          "type": "String",
+          "expression": "$.data"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "modelCompletion",
+          "type": "String"
+        }
+      ]
+    },
+    {
+      "name": "BugReportOutput",
+      "type": "Output",
+      "configuration": {
+        "output": {}
+      },
+      "inputs": [
+        {
+          "name": "document",
+          "type": "String",
+          "expression": "$.data"
+        }
+      ]
+    },
+    {
+      "name": "BugFollowUpOutput",
+      "type": "Output",
+      "configuration": {
+        "output": {}
+      },
+      "inputs": [
+        {
+          "name": "document",
+          "type": "String",
+          "expression": "$.data"
+        }
+      ]
+    },
+    {
+      "name": "PlatformQuestionOutput",
+      "type": "Output",
+      "configuration": {
+        "output": {}
+      },
+      "inputs": [
+        {
+          "name": "document",
+          "type": "String",
+          "expression": "$.data"
+        }
+      ]
+    },
+    {
+      "name": "OtherOutput",
+      "type": "Output",
+      "configuration": {
+        "output": {}
+      },
+      "inputs": [
+        {
+          "name": "document",
+          "type": "String",
+          "expression": "$.data"
+        }
+      ]
+    },
+    {
+      "name": "DefaultOutput",
+      "type": "Output",
+      "configuration": {
+        "output": {}
+      },
+      "inputs": [
+        {
+          "name": "document",
+          "type": "String",
+          "expression": "$.data"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "name": "InputToClassifier",
+      "type": "Data",
+      "source": "FlowInputNode",
+      "target": "ClassifierPrompt",
+      "configuration": {
+        "data": {
+          "sourceOutput": "document",
+          "targetInput": "customerMessage"
+        }
+      }
+    },
+    {
+      "name": "ClassifierToCondition",
+      "type": "Data",
+      "source": "ClassifierPrompt",
+      "target": "RouteCondition",
+      "configuration": {
+        "data": {
+          "sourceOutput": "modelCompletion",
+          "targetInput": "label"
+        }
+      }
+    },
+    {
+      "name": "ConditionToBugCheck",
+      "type": "Conditional",
+      "source": "RouteCondition",
+      "target": "BugDetailCheck",
+      "configuration": {
+        "conditional": {
+          "condition": "BugReport"
+        }
+      }
+    },
+    {
+      "name": "ConditionToFAQ",
+      "type": "Conditional",
+      "source": "RouteCondition",
+      "target": "FAQPrompt",
+      "configuration": {
+        "conditional": {
+          "condition": "PlatformQuestion"
+        }
+      }
+    },
+    {
+      "name": "ConditionToOther",
+      "type": "Conditional",
+      "source": "RouteCondition",
+      "target": "OtherRedirectPrompt",
+      "configuration": {
+        "conditional": {
+          "condition": "Other"
+        }
+      }
+    },
+    {
+      "name": "ConditionDefaultToOther",
+      "type": "Conditional",
+      "source": "RouteCondition",
+      "target": "DefaultRedirectPrompt",
+      "configuration": {
+        "conditional": {
+          "condition": "default"
+        }
+      }
+    },
+    {
+      "name": "InputToBugCheck",
+      "type": "Data",
+      "source": "FlowInputNode",
+      "target": "BugDetailCheck",
+      "configuration": {
+        "data": {
+          "sourceOutput": "document",
+          "targetInput": "customerMessage"
+        }
+      }
+    },
+    {
+      "name": "BugCheckToCondition",
+      "type": "Data",
+      "source": "BugDetailCheck",
+      "target": "BugDetailCondition",
+      "configuration": {
+        "data": {
+          "sourceOutput": "response",
+          "targetInput": "status"
+        }
+      }
+    },
+    {
+      "name": "BugReadyToAgent",
+      "type": "Conditional",
+      "source": "BugDetailCondition",
+      "target": "BugReportAgent",
+      "configuration": {
+        "conditional": {
+          "condition": "Ready"
+        }
+      }
+    },
+    {
+      "name": "BugNeedsInfoToFollowUp",
+      "type": "Conditional",
+      "source": "BugDetailCondition",
+      "target": "BugFollowUpMessage",
+      "configuration": {
+        "conditional": {
+          "condition": "default"
+        }
+      }
+    },
+    {
+      "name": "InputToBugAgent",
+      "type": "Data",
+      "source": "FlowInputNode",
+      "target": "BugReportAgent",
+      "configuration": {
+        "data": {
+          "sourceOutput": "document",
+          "targetInput": "agentInputText"
+        }
+      }
+    },
+    {
+      "name": "InputToBugFollowUp",
+      "type": "Data",
+      "source": "FlowInputNode",
+      "target": "BugFollowUpMessage",
+      "configuration": {
+        "data": {
+          "sourceOutput": "document",
+          "targetInput": "customerMessage"
+        }
+      }
+    },
+    {
+      "name": "InputToFAQ",
+      "type": "Data",
+      "source": "FlowInputNode",
+      "target": "FAQPrompt",
+      "configuration": {
+        "data": {
+          "sourceOutput": "document",
+          "targetInput": "customerMessage"
+        }
+      }
+    },
+    {
+      "name": "InputToOther",
+      "type": "Data",
+      "source": "FlowInputNode",
+      "target": "OtherRedirectPrompt",
+      "configuration": {
+        "data": {
+          "sourceOutput": "document",
+          "targetInput": "customerMessage"
+        }
+      }
+    },
+    {
+      "name": "InputToDefault",
+      "type": "Data",
+      "source": "FlowInputNode",
+      "target": "DefaultRedirectPrompt",
+      "configuration": {
+        "data": {
+          "sourceOutput": "document",
+          "targetInput": "customerMessage"
+        }
+      }
+    },
+    {
+      "name": "BugAgentToOutput",
+      "type": "Data",
+      "source": "BugReportAgent",
+      "target": "BugReportOutput",
+      "configuration": {
+        "data": {
+          "sourceOutput": "agentResponse",
+          "targetInput": "document"
+        }
+      }
+    },
+    {
+      "name": "BugFollowUpToOutput",
+      "type": "Data",
+      "source": "BugFollowUpMessage",
+      "target": "BugFollowUpOutput",
+      "configuration": {
+        "data": {
+          "sourceOutput": "response",
+          "targetInput": "document"
+        }
+      }
+    },
+    {
+      "name": "FAQToOutput",
+      "type": "Data",
+      "source": "FAQPrompt",
+      "target": "PlatformQuestionOutput",
+      "configuration": {
+        "data": {
+          "sourceOutput": "modelCompletion",
+          "targetInput": "document"
+        }
+      }
+    },
+    {
+      "name": "OtherToOutput",
+      "type": "Data",
+      "source": "OtherRedirectPrompt",
+      "target": "OtherOutput",
+      "configuration": {
+        "data": {
+          "sourceOutput": "modelCompletion",
+          "targetInput": "document"
+        }
+      }
+    },
+    {
+      "name": "DefaultToOutput",
+      "type": "Data",
+      "source": "DefaultRedirectPrompt",
+      "target": "DefaultOutput",
+      "configuration": {
+        "data": {
+          "sourceOutput": "modelCompletion",
+          "targetInput": "document"
+        }
+      }
+    }
+  ]
+}

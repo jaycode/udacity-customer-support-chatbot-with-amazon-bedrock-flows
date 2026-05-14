@@ -1,0 +1,32 @@
+{
+  "flowInputNode": {
+    "nodeName": "FlowInputNode"
+  },
+  "tests": [
+    {
+      "id": "t1_bug_report_complete",
+      "prompt": "The checkout page crashes every time I click the Pay button. I can reproduce it by adding any item to my cart, going to checkout, entering my card details, and clicking Pay. I am using Chrome 120 on macOS Sonoma.",
+      "expected": "Treat this as a bug report. A good response acknowledges the checkout crash and confirms that a ticket was created using the description, reproduction steps, and environment from the message."
+    },
+    {
+      "id": "t2_bug_report_missing_details",
+      "prompt": "Your app keeps freezing when I try to use it.",
+      "expected": "Treat this as a bug report, but do not create a ticket yet. Ask for the missing reproduction steps and environment details."
+    },
+    {
+      "id": "t3_platform_question_covered",
+      "prompt": "How can I track my order after it ships?",
+      "expected": "Answer from the FAQ: once the order ships, the customer receives a tracking link by email. Account holders can also find tracking under My Orders."
+    },
+    {
+      "id": "t4_platform_question_uncovered",
+      "prompt": "Do you offer gift wrapping, engraving, or handwritten cards at checkout?",
+      "expected": "State that the FAQ does not cover gift wrapping, engraving, or handwritten cards. Direct the customer to human support at 1-800-555-0199."
+    },
+    {
+      "id": "t5_other_request",
+      "prompt": "Can you recommend a birthday gift for my cousin who likes hiking?",
+      "expected": "State that gift recommendations are outside this support flow. Direct the customer to human support at 1-800-555-0199."
+    }
+  ]
+}
